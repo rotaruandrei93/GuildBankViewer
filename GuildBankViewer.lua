@@ -46,6 +46,12 @@ local lastSyncReqResponse = 0
 local lastMarketReqResponse = 0
 local SYNC_REQ_COOLDOWN = 30 -- seconds; avoid a flood if several people log in around the same time
 
+-- Set (to GetTime() + delay) whenever a bank-frame event suggests it's time
+-- to rescan; actually acted on from OnUpdate once that time passes. See the
+-- BANKFRAME_OPENED handling below for why this is delayed rather than
+-- instant.
+local pendingBankScanAt = nil
+
 -- Relay support: if the real bank alt is offline, another online member who
 -- has cached bank data can resend it on the alt's behalf. See the SYNCREQ
 -- handler and the pendingRelayChecks queue below.
@@ -62,6 +68,7 @@ local RELAY_SELF_COOLDOWN = 30 -- don't relay the same alt again this soon after
 -- as-yet-undeclared name) ensures OnUpdate's closure captures this actual
 -- local as an upvalue instead of silently falling back to a global.
 local ProcessPendingRelays
+local BroadcastBankData
 
 ----------------------------------------------------------------------
 -- Utility
@@ -150,6 +157,26 @@ GetItemInfo = function(item)
         LearnItem(id, name)
     end
     return name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture
+end
+
+-- GetItemIcon isn't guaranteed to exist as a global on every server/client
+-- -- some builds simply don't implement it, and calling a nonexistent
+-- global errors immediately and aborts whatever function called it (which
+-- is what was leaving the list blank: the very first row's icon lookup
+-- threw and stopped GuildBankViewer_RefreshList before it filled in
+-- anything). GetItemInfo's own 10th return value is already the item's
+-- icon texture, so there's never actually a need for a separate call --
+-- this uses that first, and only tries the real GetItemIcon (guarded by
+-- pcall) as a fallback, for a client that does have it and might resolve
+-- an item GetItemInfo hasn't cached yet.
+local function SafeGetItemIcon(item)
+    local _, _, _, _, _, _, _, _, _, texture = GetItemInfo(item)
+    if texture then return texture end
+    if type(GetItemIcon) == "function" then
+        local ok, result = pcall(GetItemIcon, item)
+        if ok then return result end
+    end
+    return nil
 end
 
 local function FormatMoney(copper)
@@ -324,6 +351,11 @@ frame:SetScript("OnUpdate", function()
         ProcessPendingRelays()
     end
 
+    if pendingBankScanAt and GetTime() >= pendingBankScanAt and BroadcastBankData then
+        pendingBankScanAt = nil
+        BroadcastBankData()
+    end
+
     if table.getn(sendQueue) == 0 then return end
     sendTimer = sendTimer + arg1
     if sendTimer < SEND_INTERVAL then return end
@@ -388,7 +420,7 @@ local function IsBankDataLoaded()
     return (GetContainerNumSlots(-1) or 0) > 0
 end
 
-local function BroadcastBankData(verbose, force)
+BroadcastBankData = function(verbose, force)
     if not IsInGuild() then
         Print("You're not in a guild, so bank data can't be shared to a guild channel.")
         return
@@ -945,7 +977,16 @@ frame:SetScript("OnEvent", function()
     elseif event == "BANKFRAME_OPENED" or event == "BANKFRAME_CLOSED"
         or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" then
         if GuildBankViewerCharDB.isBankAlt then
-            BroadcastBankData()
+            -- Don't scan instantly: right when BANKFRAME_OPENED fires, the
+            -- bank's slot contents can still be a beat behind arriving from
+            -- the server (bag contents don't have this problem -- they're
+            -- already loaded from login), so scanning immediately can catch
+            -- an empty bank and broadcast bag items only, with the bank
+            -- itself looking empty to everyone else. A short delay lets the
+            -- data actually land, and also coalesces several rapid
+            -- slot-changed events (e.g. moving a whole stack around) into
+            -- one scan instead of one per event.
+            pendingBankScanAt = GetTime() + 0.75
         end
     elseif event == "ITEM_DATA_LOAD_RESULT" then
         -- ClassicAPI (optional) tells us an item we didn't have cached just loaded.
@@ -1122,7 +1163,7 @@ local function BuildResults(filterText)
                 -- the bare itemID behaves exactly as it always did.
                 local lookup = (suffixID ~= 0) and BuildItemLink(itemID, suffixID) or itemID
                 local name, link, quality = GetItemInfo(lookup)
-                local texture = GetItemIcon(lookup)
+                local texture = SafeGetItemIcon(lookup)
                 if not name then
                     TryRequestUnknownItem(itemID)
                     name = "Item #" .. itemID
@@ -1417,7 +1458,7 @@ local function BuildMarket(listKey, store, filterText)
     for id, entry in pairs(store) do
       if myGuild and entry.guild == myGuild then
         local name, link, quality = GetItemInfo(entry.itemID)
-        local texture = GetItemIcon(entry.itemID)
+        local texture = SafeGetItemIcon(entry.itemID)
         if not name then
             TryRequestUnknownItem(entry.itemID)
             name = entry.itemName or ("Item #" .. entry.itemID)
@@ -2431,7 +2472,7 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
         iconRetryElapsed = 0
         iconRetryAttempts = (iconRetryAttempts or 0) + 1
 
-        local texture = GetItemIcon(iconRetryItemID)
+        local texture = SafeGetItemIcon(iconRetryItemID)
         if texture then
             icon:SetTexture(texture)
             icon:Show()
@@ -2478,7 +2519,7 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
     local function TakeDraggedSelection()
         if pendingDragItem then
             local name = GetItemInfo(pendingDragItem.itemID)
-            local texture = GetItemIcon(pendingDragItem.itemID)
+            local texture = SafeGetItemIcon(pendingDragItem.itemID)
             SelectItem(pendingDragItem.itemID, name, pendingDragItem.link, texture)
             ClearCursor()
         end
@@ -2579,7 +2620,7 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
             if entry then
                 local r, g, b = 1, 1, 1
                 local _, _, quality = GetItemInfo(entry.id)
-                local texture = GetItemIcon(entry.id)
+                local texture = SafeGetItemIcon(entry.id)
                 if quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality] then
                     local c = ITEM_QUALITY_COLORS[quality]
                     r, g, b = c.r, c.g, c.b
@@ -2602,7 +2643,7 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
         local row = resultRows[i]
         row:SetScript("OnClick", function()
             local name, link = GetItemInfo(row.itemID)
-            local texture = GetItemIcon(row.itemID)
+            local texture = SafeGetItemIcon(row.itemID)
             SelectItem(row.itemID, name or row.itemName, link or ("item:" .. row.itemID), texture)
             searchBox:SetText("")
             RefreshSearchResults()
@@ -2765,6 +2806,29 @@ SLASH_GUILDBANKVIEWER1 = "/gbank"
 SlashCmdList["GUILDBANKVIEWER"] = function(msg)
     msg = msg or ""
     local _, _, cmd, arg = string.find(msg, "^%s*(%a+)%s*(.-)%s*$")
+
+    if cmd == "links" then
+        -- Debug helper: print the raw item-link text for everything in this
+        -- character's bags/bank, with the "|" escaped so the chat frame
+        -- shows the literal string instead of rendering it as a clickable
+        -- link. Used to verify exactly where the random-suffix field sits
+        -- in this server's item links.
+        local function dumpContainer(bagID, label)
+            local slots = GetContainerNumSlots(bagID)
+            if not slots or slots == 0 then return end
+            for slot = 1, slots do
+                local link = GetContainerItemLink(bagID, slot)
+                if link then
+                    Print(label .. " slot " .. slot .. ": " .. string.gsub(link, "|", "||"))
+                end
+            end
+        end
+        Print("Raw item links (paste these back for debugging):")
+        for bagID = 0, 4 do dumpContainer(bagID, "Bag " .. bagID) end
+        dumpContainer(-1, "Bank")
+        for bagID = 5, 10 do dumpContainer(bagID, "Bank bag " .. bagID) end
+        return
+    end
 
     if cmd == "forget" and arg ~= "" then
         -- Manual cleanup for an alt that's gone for good (deleted, renamed,
