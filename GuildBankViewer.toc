@@ -1,7 +1,7 @@
 ## Interface: 11200
 ## Title: Guild Bank Viewer
 ## Notes: See any designated bank alt's inventory in-game, live-synced to the whole guild over the guild addon channel. No external bot or website needed.
-## Author: You
+## Author: rotaruandrei93
 ## Version: 1.0
 ## SavedVariables: GuildBankViewerDB
 ## SavedVariablesPerCharacter: GuildBankViewerCharDB
