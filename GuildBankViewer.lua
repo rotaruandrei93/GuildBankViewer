@@ -1190,7 +1190,14 @@ local function BuildResults(filterText)
                 -- the bare itemID behaves exactly as it always did.
                 local lookup = (suffixID ~= 0) and BuildItemLink(itemID, suffixID) or itemID
                 local name, link, quality = GetItemInfo(lookup)
-                local texture = SafeGetItemIcon(lookup)
+                -- Icon art never changes with a random suffix (Green Lens of
+                -- Fire Resistance uses the exact same icon as plain Green
+                -- Lens) -- always resolve it from the bare itemID rather
+                -- than the synthetic link. The synthetic link reliably
+                -- resolves a name on this server but not always a texture,
+                -- which was showing the "?" placeholder for every suffixed
+                -- item even though the name/count were already correct.
+                local texture = SafeGetItemIcon(itemID)
                 if not name then
                     TryRequestUnknownItem(itemID)
                     name = "Item #" .. itemID
