@@ -2488,7 +2488,12 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
     slot:RegisterForClicks("LeftButtonUp")
     slot:RegisterForDrag("LeftButton")
 
-    local icon = slot:CreateTexture(nil, "ARTWORK")
+    -- Sublevel 1 here (not the default 0) so this always draws on top of
+    -- the slot's own SetNormalTexture backpack-slot art, which sits on the
+    -- same "ARTWORK" layer at sublevel 0. Without this the normal texture
+    -- won and the selected item's icon was invisible even though selection
+    -- itself (tooltip, name label) worked fine.
+    local icon = slot:CreateTexture(nil, "ARTWORK", nil, 1)
     icon:SetAllPoints(slot)
     icon:Hide()
     slot.icon = icon
