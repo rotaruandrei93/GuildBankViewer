@@ -1398,12 +1398,11 @@ end
 ----------------------------------------------------------------------
 
 local MARKET_NUM_ROWS = 22 -- pool size
--- Upper bound on how many rows fit in the fixed space the Selling/Bounty
--- pages give the list (same layout math as UpdateBankListSize, but these
--- two pages don't have a variable-height footer to account for). The list
--- box is resized dynamically between MARKET_MIN_VISIBLE_ROWS and this max
--- in RefreshMarketRows, so a page with only one or two listings doesn't
--- sit inside a mostly-empty box sized for a full list.
+-- How many rows actually fit in the fixed space the Selling/Bounty pages
+-- give the list (same layout math as UpdateBankListSize, but these two
+-- pages don't have a variable-height footer to account for). The box is
+-- always sized to this, same as the Bank tab's list -- it fills the full
+-- available height regardless of how many listings currently exist.
 local MARKET_MAX_VISIBLE_ROWS = 8
 for n = 8, MARKET_NUM_ROWS do
     if ListContentHeight(n) <= (596 - 141 - 10 - 16 - 30) then
@@ -1412,7 +1411,6 @@ for n = 8, MARKET_NUM_ROWS do
         break
     end
 end
-local MARKET_MIN_VISIBLE_ROWS = 4
 local sellingRows = {}
 local bountyRows = {}
 local sortedSelling = {}
@@ -1560,23 +1558,13 @@ end
 
 local function RefreshMarketRows(rowPool, sortedData, scrollFrameName, kind)
     local scrollFrame = getglobal(scrollFrameName)
-    local listBg = scrollFrame:GetParent()
-
-    local dataCount = table.getn(sortedData)
-    local visibleRows = dataCount
-    if visibleRows < MARKET_MIN_VISIBLE_ROWS then visibleRows = MARKET_MIN_VISIBLE_ROWS end
-    if visibleRows > MARKET_MAX_VISIBLE_ROWS then visibleRows = MARKET_MAX_VISIBLE_ROWS end
-
-    listBg:SetHeight(ListContentHeight(visibleRows))
-    scrollFrame:SetHeight(RowsSpanHeight(visibleRows))
-
     local offset = FauxScrollFrame_GetOffset(scrollFrame) or 0
-    FauxScrollFrame_Update(scrollFrame, dataCount, visibleRows, ITEM_ROW_HEIGHT)
+    FauxScrollFrame_Update(scrollFrame, table.getn(sortedData), MARKET_MAX_VISIBLE_ROWS, ITEM_ROW_HEIGHT)
 
     for i = 1, MARKET_NUM_ROWS do
         local row = rowPool[i]
         local dataIndex = i + offset
-        local entry = (i <= visibleRows) and sortedData[dataIndex] or nil
+        local entry = (i <= MARKET_MAX_VISIBLE_ROWS) and sortedData[dataIndex] or nil
         if entry then
             local r, g, b = 1, 1, 1
             if entry.quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[entry.quality] then
