@@ -978,7 +978,6 @@ frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("GUILD_ROSTER_UPDATE")
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("BANKFRAME_OPENED")
-frame:RegisterEvent("BANKFRAME_CLOSED")
 frame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 frame:RegisterEvent("PLAYERBANKBAGSLOTS_CHANGED")
 frame:RegisterEvent("ITEM_DATA_LOAD_RESULT") -- only ever fires if ClassicAPI (optional) is installed
@@ -1001,8 +1000,17 @@ frame:SetScript("OnEvent", function()
         end
     elseif event == "CHAT_MSG_ADDON" then
         OnAddonMessage(arg1, arg2, arg3, arg4)
-    elseif event == "BANKFRAME_OPENED" or event == "BANKFRAME_CLOSED"
+    elseif event == "BANKFRAME_OPENED"
         or event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERBANKBAGSLOTS_CHANGED" then
+        -- BANKFRAME_CLOSED deliberately isn't handled here (and isn't even
+        -- registered above). It used to be, but that scheduled a scan for
+        -- ~0.75s after the bank window closed -- by which point the client
+        -- no longer has real bank slot contents to read, so that scan came
+        -- back looking like an almost-empty bank (bags only) and overwrote
+        -- the good data that was just synced while the bank was open. Only
+        -- scan while the bank is actually open (or about to be, for the
+        -- OPENED case) so a close never has anything to clobber good data
+        -- with.
         if GuildBankViewerCharDB.isBankAlt then
             -- Don't scan instantly: right when BANKFRAME_OPENED fires, the
             -- bank's slot contents can still be a beat behind arriving from
@@ -1321,7 +1329,8 @@ end
 local function CreateRow(parent, index)
     local row = CreateFrame("Button", "GuildBankViewerRow" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(468)
+    row:SetWidth(396) -- narrowed from 468 so the row's own background (and
+                       -- the Request button) end clear of the scrollbar
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1342,25 +1351,31 @@ local function CreateRow(parent, index)
     row.icon:SetHeight(ITEM_ICON_SIZE)
     row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -5)
 
+    -- Columns end 52px earlier than before (name is narrower; count/alt/
+    -- Request all shift left by the same 52px, so the gaps between them
+    -- stay identical) to keep the Request button clear of the scrollbar.
+    -- FauxScrollFrameTemplate's scrollbar is inset -13 from the *scroll
+    -- frame's* own right edge (which is narrower than the row/listBg), not
+    -- from the row's right edge, so it sat under the button before this.
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 26, -6)
-    row.name:SetWidth(230)
+    row.name:SetWidth(178)
     row.name:SetJustifyH("LEFT")
     row.name:SetJustifyV("TOP")
 
     row.count = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.count:SetPoint("TOPLEFT", row, "TOPLEFT", 262, -6)
+    row.count:SetPoint("TOPLEFT", row, "TOPLEFT", 210, -6)
     row.count:SetWidth(40)
 
     row.alt = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.alt:SetPoint("TOPLEFT", row, "TOPLEFT", 308, -6)
+    row.alt:SetPoint("TOPLEFT", row, "TOPLEFT", 256, -6)
     row.alt:SetWidth(90)
     row.alt:SetJustifyH("LEFT")
 
     local reqBtn = CreateFrame("Button", "GuildBankViewerRow" .. index .. "Req", row, "UIPanelButtonTemplate")
     reqBtn:SetWidth(60)
     reqBtn:SetHeight(18)
-    reqBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 404, -4)
+    reqBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 344, -4)
     reqBtn:SetText("Request")
     local reqBtnText = getglobal(reqBtn:GetName() .. "Text")
     reqBtnText:SetFontObject("GameFontNormalSmall")
@@ -1623,7 +1638,8 @@ end
 local function CreateMarketRow(parent, index, rowPool, namePrefix)
     local row = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(484)
+    row:SetWidth(396) -- narrowed from 484 so the row's own background (and
+                       -- the action button) end clear of the scrollbar
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1640,30 +1656,35 @@ local function CreateMarketRow(parent, index, rowPool, namePrefix)
     row.icon:SetHeight(ITEM_ICON_SIZE)
     row.icon:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -5)
 
+    -- Same 67px leftward compression as the Bank tab's row (see CreateRow)
+    -- and for the same reason: the scrollbar sits inset within the scroll
+    -- frame's own (narrower) width, not the row's, so the action button was
+    -- sitting right under it. Name is narrower; everything after it shifts
+    -- left by the same amount so the gaps between columns don't change.
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 26, -6)
-    row.name:SetWidth(177)
+    row.name:SetWidth(110)
     row.name:SetJustifyH("LEFT")
     row.name:SetJustifyV("TOP")
 
     row.qty = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.qty:SetPoint("TOPLEFT", row, "TOPLEFT", 209, -6)
+    row.qty:SetPoint("TOPLEFT", row, "TOPLEFT", 142, -6)
     row.qty:SetWidth(30)
 
     row.amount = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.amount:SetPoint("TOPLEFT", row, "TOPLEFT", 245, -6)
+    row.amount:SetPoint("TOPLEFT", row, "TOPLEFT", 178, -6)
     row.amount:SetWidth(70)
     row.amount:SetJustifyH("LEFT")
 
     row.poster = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.poster:SetPoint("TOPLEFT", row, "TOPLEFT", 321, -6)
+    row.poster:SetPoint("TOPLEFT", row, "TOPLEFT", 254, -6)
     row.poster:SetWidth(90)
     row.poster:SetJustifyH("LEFT")
 
     local actionBtn = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index .. "Act", row, "UIPanelButtonTemplate")
     actionBtn:SetWidth(64)
     actionBtn:SetHeight(18)
-    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 415, -4)
+    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 340, -4)
     local actionBtnText = getglobal(actionBtn:GetName() .. "Text")
     actionBtnText:SetFontObject("GameFontNormalSmall")
     actionBtnText:SetFont("Fonts\\FRIZQT__.ttf", 10)
@@ -1771,9 +1792,9 @@ local function CreateMainFrame()
     searchBox:SetScript("OnTextChanged", function() GuildBankViewer_RefreshList() end)
     searchBox:SetScript("OnEscapePressed", function() this:ClearFocus() end)
 
-    MakeSortHeader("bank", bankPage, "name", "Item", 50, -125, 230, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
-    MakeSortHeader("bank", bankPage, "count", "Count", 286, -125, 40)
-    MakeSortHeader("bank", bankPage, "alt", "Bank Alt", 332, -125, 90)
+    MakeSortHeader("bank", bankPage, "name", "Item", 50, -125, 178, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
+    MakeSortHeader("bank", bankPage, "count", "Count", 234, -125, 40)
+    MakeSortHeader("bank", bankPage, "alt", "Bank Alt", 280, -125, 90)
     GuildBankViewer_UpdateSortHeaders("bank")
 
     local listBg = CreateFrame("Frame", nil, bankPage)
@@ -1917,10 +1938,10 @@ local function CreateMainFrame()
         GuildBankViewer_OpenNewSelling()
     end)
 
-    MakeSortHeader("sell", sellPage, "name", "Item", 50, -125, 177, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
-    MakeSortHeader("sell", sellPage, "qty", "Qty", 233, -125, 34)
-    MakeSortHeader("sell", sellPage, "amount", "Price", 269, -125, 70)
-    MakeSortHeader("sell", sellPage, "poster", "Seller", 345, -125, 90)
+    MakeSortHeader("sell", sellPage, "name", "Item", 50, -125, 110, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
+    MakeSortHeader("sell", sellPage, "qty", "Qty", 166, -125, 34)
+    MakeSortHeader("sell", sellPage, "amount", "Price", 202, -125, 70)
+    MakeSortHeader("sell", sellPage, "poster", "Seller", 278, -125, 90)
     GuildBankViewer_UpdateSortHeaders("sell")
 
     local sellListBg = CreateFrame("Frame", nil, sellPage)
@@ -1981,10 +2002,10 @@ local function CreateMainFrame()
         GuildBankViewer_OpenNewBounty()
     end)
 
-    MakeSortHeader("bounty", bountyPage, "name", "Item", 50, -125, 177, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
-    MakeSortHeader("bounty", bountyPage, "qty", "Qty", 233, -125, 34)
-    MakeSortHeader("bounty", bountyPage, "amount", "Reward", 269, -125, 70)
-    MakeSortHeader("bounty", bountyPage, "poster", "Poster", 345, -125, 90)
+    MakeSortHeader("bounty", bountyPage, "name", "Item", 50, -125, 110, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
+    MakeSortHeader("bounty", bountyPage, "qty", "Qty", 166, -125, 34)
+    MakeSortHeader("bounty", bountyPage, "amount", "Reward", 202, -125, 70)
+    MakeSortHeader("bounty", bountyPage, "poster", "Poster", 278, -125, 90)
     GuildBankViewer_UpdateSortHeaders("bounty")
 
     local bountyListBg = CreateFrame("Frame", nil, bountyPage)
