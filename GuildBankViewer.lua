@@ -1016,9 +1016,18 @@ frame:SetScript("OnEvent", function()
             pendingBankScanAt = GetTime() + 0.75
         end
     elseif event == "ITEM_DATA_LOAD_RESULT" then
-        -- ClassicAPI (optional) tells us an item we didn't have cached just loaded.
+        -- ClassicAPI (optional) tells us an item we didn't have cached just
+        -- loaded. This is also what resolves a missing icon (icon texture
+        -- comes from the same item data as the name) -- but only the Bank
+        -- tab was being refreshed here, so a Selling/Bounty row with an
+        -- unresolved icon at listing time would stay stuck on the
+        -- placeholder until something else happened to trigger a redraw
+        -- (switching tabs, searching, etc.). Refresh whichever of the
+        -- three lists are actually showing.
         if GuildBankViewerFrame and GuildBankViewerFrame:IsShown() then
             GuildBankViewer_RefreshList()
+            GuildBankViewer_RefreshSelling()
+            GuildBankViewer_RefreshBounties()
         end
     end
 end)
@@ -1389,17 +1398,21 @@ end
 ----------------------------------------------------------------------
 
 local MARKET_NUM_ROWS = 22 -- pool size
--- How many rows actually fit in the fixed space the Selling/Bounty pages
--- give the list (same layout math as UpdateBankListSize, but these two
--- pages don't have a variable-height footer to account for).
-local MARKET_VISIBLE_ROWS = 8
+-- Upper bound on how many rows fit in the fixed space the Selling/Bounty
+-- pages give the list (same layout math as UpdateBankListSize, but these
+-- two pages don't have a variable-height footer to account for). The list
+-- box is resized dynamically between MARKET_MIN_VISIBLE_ROWS and this max
+-- in RefreshMarketRows, so a page with only one or two listings doesn't
+-- sit inside a mostly-empty box sized for a full list.
+local MARKET_MAX_VISIBLE_ROWS = 8
 for n = 8, MARKET_NUM_ROWS do
     if ListContentHeight(n) <= (596 - 141 - 10 - 16 - 30) then
-        MARKET_VISIBLE_ROWS = n
+        MARKET_MAX_VISIBLE_ROWS = n
     else
         break
     end
 end
+local MARKET_MIN_VISIBLE_ROWS = 4
 local sellingRows = {}
 local bountyRows = {}
 local sortedSelling = {}
@@ -1547,13 +1560,23 @@ end
 
 local function RefreshMarketRows(rowPool, sortedData, scrollFrameName, kind)
     local scrollFrame = getglobal(scrollFrameName)
+    local listBg = scrollFrame:GetParent()
+
+    local dataCount = table.getn(sortedData)
+    local visibleRows = dataCount
+    if visibleRows < MARKET_MIN_VISIBLE_ROWS then visibleRows = MARKET_MIN_VISIBLE_ROWS end
+    if visibleRows > MARKET_MAX_VISIBLE_ROWS then visibleRows = MARKET_MAX_VISIBLE_ROWS end
+
+    listBg:SetHeight(ListContentHeight(visibleRows))
+    scrollFrame:SetHeight(RowsSpanHeight(visibleRows))
+
     local offset = FauxScrollFrame_GetOffset(scrollFrame) or 0
-    FauxScrollFrame_Update(scrollFrame, table.getn(sortedData), MARKET_VISIBLE_ROWS, ITEM_ROW_HEIGHT)
+    FauxScrollFrame_Update(scrollFrame, dataCount, visibleRows, ITEM_ROW_HEIGHT)
 
     for i = 1, MARKET_NUM_ROWS do
         local row = rowPool[i]
         local dataIndex = i + offset
-        local entry = (i <= MARKET_VISIBLE_ROWS) and sortedData[dataIndex] or nil
+        local entry = (i <= visibleRows) and sortedData[dataIndex] or nil
         if entry then
             local r, g, b = 1, 1, 1
             if entry.quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[entry.quality] then
@@ -1612,7 +1635,7 @@ end
 local function CreateMarketRow(parent, index, rowPool, namePrefix)
     local row = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(468)
+    row:SetWidth(484)
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1641,18 +1664,18 @@ local function CreateMarketRow(parent, index, rowPool, namePrefix)
 
     row.amount = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     row.amount:SetPoint("TOPLEFT", row, "TOPLEFT", 245, -6)
-    row.amount:SetWidth(85)
+    row.amount:SetWidth(70)
     row.amount:SetJustifyH("LEFT")
 
     row.poster = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.poster:SetPoint("TOPLEFT", row, "TOPLEFT", 336, -6)
-    row.poster:SetWidth(60)
+    row.poster:SetPoint("TOPLEFT", row, "TOPLEFT", 321, -6)
+    row.poster:SetWidth(90)
     row.poster:SetJustifyH("LEFT")
 
     local actionBtn = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index .. "Act", row, "UIPanelButtonTemplate")
     actionBtn:SetWidth(64)
     actionBtn:SetHeight(18)
-    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 402, -4)
+    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 415, -4)
     local actionBtnText = getglobal(actionBtn:GetName() .. "Text")
     actionBtnText:SetFontObject("GameFontNormalSmall")
     actionBtnText:SetFont("Fonts\\FRIZQT__.ttf", 10)
@@ -1908,14 +1931,14 @@ local function CreateMainFrame()
 
     MakeSortHeader("sell", sellPage, "name", "Item", 50, -125, 177, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
     MakeSortHeader("sell", sellPage, "qty", "Qty", 233, -125, 34)
-    MakeSortHeader("sell", sellPage, "amount", "Price", 269, -125, 85)
-    MakeSortHeader("sell", sellPage, "poster", "Seller", 360, -125, 60)
+    MakeSortHeader("sell", sellPage, "amount", "Price", 269, -125, 70)
+    MakeSortHeader("sell", sellPage, "poster", "Seller", 345, -125, 90)
     GuildBankViewer_UpdateSortHeaders("sell")
 
     local sellListBg = CreateFrame("Frame", nil, sellPage)
     sellListBg:SetPoint("TOPLEFT", sellPage, "TOPLEFT", 16, -141)
     sellListBg:SetWidth(498)
-    sellListBg:SetHeight(ListContentHeight(MARKET_VISIBLE_ROWS))
+    sellListBg:SetHeight(ListContentHeight(MARKET_MAX_VISIBLE_ROWS))
     sellListBg:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1927,7 +1950,7 @@ local function CreateMainFrame()
     local sellScrollFrame = CreateFrame("ScrollFrame", "GuildBankViewerSellScrollFrame", sellListBg, "FauxScrollFrameTemplate")
     sellScrollFrame:SetPoint("TOPLEFT", sellListBg, "TOPLEFT", 0, -8)
     sellScrollFrame:SetWidth(468)
-    sellScrollFrame:SetHeight(RowsSpanHeight(MARKET_VISIBLE_ROWS))
+    sellScrollFrame:SetHeight(RowsSpanHeight(MARKET_MAX_VISIBLE_ROWS))
     sellScrollFrame:SetScript("OnVerticalScroll", function()
         FauxScrollFrame_OnVerticalScroll(ITEM_ROW_HEIGHT, function() GuildBankViewer_RefreshSelling() end)
     end)
@@ -1972,14 +1995,14 @@ local function CreateMainFrame()
 
     MakeSortHeader("bounty", bountyPage, "name", "Item", 50, -125, 177, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
     MakeSortHeader("bounty", bountyPage, "qty", "Qty", 233, -125, 34)
-    MakeSortHeader("bounty", bountyPage, "amount", "Reward", 269, -125, 85)
-    MakeSortHeader("bounty", bountyPage, "poster", "Poster", 360, -125, 60)
+    MakeSortHeader("bounty", bountyPage, "amount", "Reward", 269, -125, 70)
+    MakeSortHeader("bounty", bountyPage, "poster", "Poster", 345, -125, 90)
     GuildBankViewer_UpdateSortHeaders("bounty")
 
     local bountyListBg = CreateFrame("Frame", nil, bountyPage)
     bountyListBg:SetPoint("TOPLEFT", bountyPage, "TOPLEFT", 16, -141)
     bountyListBg:SetWidth(498)
-    bountyListBg:SetHeight(ListContentHeight(MARKET_VISIBLE_ROWS))
+    bountyListBg:SetHeight(ListContentHeight(MARKET_MAX_VISIBLE_ROWS))
     bountyListBg:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1991,7 +2014,7 @@ local function CreateMainFrame()
     local bountyScrollFrame = CreateFrame("ScrollFrame", "GuildBankViewerBountyScrollFrame", bountyListBg, "FauxScrollFrameTemplate")
     bountyScrollFrame:SetPoint("TOPLEFT", bountyListBg, "TOPLEFT", 0, -8)
     bountyScrollFrame:SetWidth(468)
-    bountyScrollFrame:SetHeight(RowsSpanHeight(MARKET_VISIBLE_ROWS))
+    bountyScrollFrame:SetHeight(RowsSpanHeight(MARKET_MAX_VISIBLE_ROWS))
     bountyScrollFrame:SetScript("OnVerticalScroll", function()
         FauxScrollFrame_OnVerticalScroll(ITEM_ROW_HEIGHT, function() GuildBankViewer_RefreshBounties() end)
     end)
