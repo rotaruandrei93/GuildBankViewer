@@ -95,17 +95,22 @@ local function GetItemIDFromLink(link)
     return nil
 end
 
--- Vanilla item strings are "item:itemID:enchant:jewel1:jewel2:jewel3:
--- jewel4:suffixID:uniqueID". A random-enchant item like "Green Lens" gets
--- its "of Fire Resistance" / "of Shadow Resistance" / etc. flavor purely
--- from the suffixID field -- the itemID itself is identical across all of
--- them. Reading only the itemID (as GetItemIDFromLink does) throws that
--- distinction away, which is what was merging different-suffix items
+-- This server's item strings are "item:itemID:enchant:suffixID:uniqueID"
+-- -- shorter than the 8-field jewel/socket format real vanilla clients
+-- with gems would use (Turtle has no item sockets, so those fields are
+-- simply absent here). Confirmed against real dumped links via /gbank
+-- links: "item:10504:0:1422:0" = Green Lens of Fire Resistance,
+-- "item:10504:0:1975:0" = of Frozen Wrath, "item:10504:0:1468:0" = of
+-- Shadow Resistance -- same itemID (10504), only the 3rd field differs,
+-- and it's what drives the suffix text. A non-suffixed item like Pattern:
+-- Robe of the Void dumped as "item:14514:0:0:0" -- suffix field 0, as
+-- expected. Reading only the itemID (as GetItemIDFromLink does) throws
+-- that distinction away, which is what was merging different-suffix items
 -- into one summed/misnamed row instead of counting them separately.
 local function GetItemIDAndSuffixFromLink(link)
     if not link then return nil, 0 end
     local _, _, idStr, suffixStr = string.find(
-        link, "item:(%d+):%-?%d+:%-?%d+:%-?%d+:%-?%d+:%-?%d+:(%-?%d+)"
+        link, "item:(%d+):%-?%d+:(%-?%d+):"
     )
     if idStr then
         return tonumber(idStr), tonumber(suffixStr) or 0
@@ -123,9 +128,9 @@ end
 
 -- Rebuilds a minimal item link from an itemID + suffixID so GetItemInfo /
 -- GetItemIcon / tooltips resolve the correctly suffixed name and stats
--- instead of the bare base-item name.
+-- instead of the bare base-item name. Matches the 4-field format above.
 local function BuildItemLink(itemID, suffixID)
-    return "item:" .. itemID .. ":0:0:0:0:0:" .. (suffixID or 0) .. ":0"
+    return "item:" .. itemID .. ":0:" .. (suffixID or 0) .. ":0"
 end
 
 ----------------------------------------------------------------------
@@ -162,21 +167,43 @@ end
 -- GetItemIcon isn't guaranteed to exist as a global on every server/client
 -- -- some builds simply don't implement it, and calling a nonexistent
 -- global errors immediately and aborts whatever function called it (which
--- is what was leaving the list blank: the very first row's icon lookup
--- threw and stopped GuildBankViewer_RefreshList before it filled in
--- anything). GetItemInfo's own 10th return value is already the item's
--- icon texture, so there's never actually a need for a separate call --
--- this uses that first, and only tries the real GetItemIcon (guarded by
--- pcall) as a fallback, for a client that does have it and might resolve
--- an item GetItemInfo hasn't cached yet.
+-- is what was leaving the list blank on clients without it: the very
+-- first row's icon lookup threw and stopped GuildBankViewer_RefreshList
+-- before it filled in anything).
+--
+-- Where GetItemIcon *does* exist, it's the reliable source. Some servers'
+-- GetItemInfo implementations don't return a texture in the same return
+-- slot Blizzard's client does (or don't return one at all), so blindly
+-- trusting "the 10th return value" there can hand back some unrelated
+-- number (sell price, level, etc.) instead of a texture path -- and
+-- SetTexture() with a number is silently interpreted as an RGB color
+-- rather than erroring, which is what was painting every icon solid red
+-- instead of failing loudly. Validating the type before trusting either
+-- source avoids that either way.
+local ICON_PLACEHOLDER = "Interface\\Icons\\INV_Misc_QuestionMark"
+
 local function SafeGetItemIcon(item)
-    local _, _, _, _, _, _, _, _, _, texture = GetItemInfo(item)
-    if texture then return texture end
     if type(GetItemIcon) == "function" then
-        local ok, result = pcall(GetItemIcon, item)
-        if ok then return result end
+        local ok, texture = pcall(GetItemIcon, item)
+        if ok and type(texture) == "string" and texture ~= "" then
+            return texture
+        end
+    end
+    local _, _, _, _, _, _, _, _, _, texture = GetItemInfo(item)
+    if type(texture) == "string" and texture ~= "" then
+        return texture
     end
     return nil
+end
+
+-- Guard for anywhere a texture is about to be handed to Texture:SetTexture
+-- -- returns the placeholder icon instead of whatever was passed in unless
+-- it's actually a usable non-empty string.
+local function SafeIconTexture(texture)
+    if type(texture) == "string" and texture ~= "" then
+        return texture
+    end
+    return ICON_PLACEHOLDER
 end
 
 local function FormatMoney(copper)
@@ -1255,7 +1282,7 @@ function GuildBankViewer_RefreshList()
             else
                 row.alt:SetText(entry.altName)
             end
-            row.icon:SetTexture(entry.texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+            row.icon:SetTexture(SafeIconTexture(entry.texture))
             row.link = entry.link
             row.itemID = entry.itemID
             row.suffixID = entry.suffixID
@@ -1531,7 +1558,7 @@ local function RefreshMarketRows(rowPool, sortedData, scrollFrameName, kind)
             row.qty:SetText(tostring(entry.qty))
             row.amount:SetText(FormatMoney(entry.amount))
             row.poster:SetText(entry.poster)
-            row.icon:SetTexture(entry.texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+            row.icon:SetTexture(SafeIconTexture(entry.texture))
             row.link = entry.link
             row.entryID = entry.id
             row.itemName = entry.name
@@ -2627,7 +2654,7 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
                 end
                 row.text:SetText(entry.name)
                 row.text:SetTextColor(r, g, b)
-                row.icon:SetTexture(texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+                row.icon:SetTexture(SafeIconTexture(texture))
                 row.itemID = entry.id
                 row.itemName = entry.name
                 row:Show()
