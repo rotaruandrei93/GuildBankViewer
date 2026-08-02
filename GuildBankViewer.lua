@@ -2529,7 +2529,11 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
             iconRetryItemID = nil
             iconRetry:Hide()
         else
-            icon:Hide()
+            -- Don't just hide the icon while we wait/retry (or if
+            -- resolution never succeeds) -- show the generic placeholder
+            -- so the slot never sits blank, same as the main list does.
+            icon:SetTexture(ICON_PLACEHOLDER)
+            icon:Show()
             if itemID then
                 iconRetryItemID = itemID
                 iconRetryElapsed = 0
