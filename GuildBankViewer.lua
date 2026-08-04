@@ -1895,6 +1895,20 @@ local function CreateMainFrame()
         -- the frame out of that auto-refresh entirely, so it only ever
         -- shows what we explicitly set.
         moneyFrame.moneyType = "STATIC"
+        -- moneyType alone isn't enough: SmallMoneyFrameTemplate's OnShow
+        -- unconditionally calls MoneyFrame_UpdateMoney(), which reads
+        -- this.info (still the "PLAYER" entry from load, regardless of
+        -- moneyType) and re-pulls GetMoney(). That fired every time this
+        -- row went from hidden to shown -- e.g. right after
+        -- RefreshBankAltRows set the correct value -- silently
+        -- overwriting it with your own money. A later refresh where the
+        -- row's already visible doesn't retrigger OnShow (Show() on an
+        -- already-shown frame is a no-op), so the correct value stuck --
+        -- which is why switching tabs "fixed" it. Blanking OnShow removes
+        -- the auto-refresh entirely; RefreshBankAltRows's own explicit
+        -- MoneyFrame_Update call is the only thing that should ever set
+        -- this frame's value.
+        moneyFrame:SetScript("OnShow", function() end)
 
         mrow:Hide()
         altMoneyRows[i] = { row = mrow, label = label, moneyFrame = moneyFrame }
