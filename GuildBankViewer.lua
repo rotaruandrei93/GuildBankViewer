@@ -1885,6 +1885,16 @@ local function CreateMainFrame()
 
         local moneyFrame = CreateFrame("Frame", "GuildBankViewerAltMoney" .. i, mrow, "SmallMoneyFrameTemplate")
         moneyFrame:SetPoint("LEFT", mrow, "CENTER", 6, 0)
+        -- SmallMoneyFrameTemplate defaults to Blizzard's "PLAYER" money
+        -- type, which registers PLAYER_MONEY and silently overwrites
+        -- whatever MoneyFrame_Update last set with the player's own
+        -- GetMoney() the next time it fires -- e.g. after a vendor
+        -- purchase or looting gold. That's what was showing your own
+        -- money here instead of the bank alt's, until something (like
+        -- switching tabs) called MoneyFrame_Update again. "STATIC" opts
+        -- the frame out of that auto-refresh entirely, so it only ever
+        -- shows what we explicitly set.
+        moneyFrame.moneyType = "STATIC"
 
         mrow:Hide()
         altMoneyRows[i] = { row = mrow, label = label, moneyFrame = moneyFrame }
