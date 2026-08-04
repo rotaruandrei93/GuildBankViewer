@@ -156,12 +156,15 @@ end
 
 local origGetItemInfo = GetItemInfo
 GetItemInfo = function(item)
-    local name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture = origGetItemInfo(item)
+    -- Named per Turtle WoW's actual return order, which has no
+    -- itemStackCount field (see SafeGetItemIcon below) -- equipSlot and
+    -- texture were previously mislabeled one slot too late here.
+    local name, link, quality, iLevel, reqLevel, class, subclass, equipSlot, texture = origGetItemInfo(item)
     if name then
         local id = tonumber(item) or GetItemIDFromLink(item) or GetItemIDFromLink(link)
         LearnItem(id, name)
     end
-    return name, link, quality, iLevel, reqLevel, class, subclass, maxStack, equipSlot, texture
+    return name, link, quality, iLevel, reqLevel, class, subclass, equipSlot, texture
 end
 
 -- GetItemIcon isn't guaranteed to exist as a global on every server/client
@@ -189,7 +192,19 @@ local function SafeGetItemIcon(item)
             return texture
         end
     end
-    local _, _, _, _, _, _, _, _, _, texture = GetItemInfo(item)
+    -- Turtle WoW's server doesn't return itemStackCount from GetItemInfo
+    -- (confirmed on the Turtle forums -- stack size just isn't available
+    -- from it there), which shifts every field after it one slot earlier
+    -- than the standard Blizzard signature. So on Turtle, texture is the
+    -- 9th return value, not the 10th. AtlasLoot's Turtle fork reads it at
+    -- the same 9th position, which is what confirmed this. Getting this
+    -- wrong is exactly what silently left every icon on the placeholder
+    -- for anyone without ClassicAPI (GetItemIcon exists as its own
+    -- function and never went through this positional parsing at all,
+    -- which is why installing ClassicAPI appeared to "fix" icons -- it
+    -- was actually just bypassing this bug, not working around a real
+    -- data gap).
+    local _, _, _, _, _, _, _, _, texture = GetItemInfo(item)
     if type(texture) == "string" and texture ~= "" then
         return texture
     end
@@ -1329,8 +1344,10 @@ end
 local function CreateRow(parent, index)
     local row = CreateFrame("Button", "GuildBankViewerRow" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(396) -- narrowed from 468 so the row's own background (and
-                       -- the Request button) end clear of the scrollbar
+    row:SetWidth(454) -- narrowed from 468 (was over-narrowed to 396 in a
+                       -- prior fix -- that left a large dead gap before the
+                       -- scrollbar) so the row's own background and the
+                       -- Request button end just clear of the scrollbar
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1359,23 +1376,23 @@ local function CreateRow(parent, index)
     -- from the row's right edge, so it sat under the button before this.
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 26, -6)
-    row.name:SetWidth(178)
+    row.name:SetWidth(216)
     row.name:SetJustifyH("LEFT")
     row.name:SetJustifyV("TOP")
 
     row.count = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.count:SetPoint("TOPLEFT", row, "TOPLEFT", 210, -6)
+    row.count:SetPoint("TOPLEFT", row, "TOPLEFT", 248, -6)
     row.count:SetWidth(40)
 
     row.alt = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.alt:SetPoint("TOPLEFT", row, "TOPLEFT", 256, -6)
+    row.alt:SetPoint("TOPLEFT", row, "TOPLEFT", 294, -6)
     row.alt:SetWidth(90)
     row.alt:SetJustifyH("LEFT")
 
     local reqBtn = CreateFrame("Button", "GuildBankViewerRow" .. index .. "Req", row, "UIPanelButtonTemplate")
     reqBtn:SetWidth(60)
     reqBtn:SetHeight(18)
-    reqBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 344, -4)
+    reqBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 390, -4)
     reqBtn:SetText("Request")
     local reqBtnText = getglobal(reqBtn:GetName() .. "Text")
     reqBtnText:SetFontObject("GameFontNormalSmall")
@@ -1638,8 +1655,10 @@ end
 local function CreateMarketRow(parent, index, rowPool, namePrefix)
     local row = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(396) -- narrowed from 484 so the row's own background (and
-                       -- the action button) end clear of the scrollbar
+    row:SetWidth(455) -- narrowed from 484 (was over-narrowed to 396 in a
+                       -- prior fix -- that left a large dead gap before the
+                       -- scrollbar) so the row's own background and the
+                       -- action button end just clear of the scrollbar
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1663,28 +1682,28 @@ local function CreateMarketRow(parent, index, rowPool, namePrefix)
     -- left by the same amount so the gaps between columns don't change.
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     row.name:SetPoint("TOPLEFT", row, "TOPLEFT", 26, -6)
-    row.name:SetWidth(110)
+    row.name:SetWidth(148)
     row.name:SetJustifyH("LEFT")
     row.name:SetJustifyV("TOP")
 
     row.qty = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.qty:SetPoint("TOPLEFT", row, "TOPLEFT", 142, -6)
+    row.qty:SetPoint("TOPLEFT", row, "TOPLEFT", 180, -6)
     row.qty:SetWidth(30)
 
     row.amount = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.amount:SetPoint("TOPLEFT", row, "TOPLEFT", 178, -6)
+    row.amount:SetPoint("TOPLEFT", row, "TOPLEFT", 216, -6)
     row.amount:SetWidth(70)
     row.amount:SetJustifyH("LEFT")
 
     row.poster = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.poster:SetPoint("TOPLEFT", row, "TOPLEFT", 254, -6)
+    row.poster:SetPoint("TOPLEFT", row, "TOPLEFT", 292, -6)
     row.poster:SetWidth(90)
     row.poster:SetJustifyH("LEFT")
 
     local actionBtn = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index .. "Act", row, "UIPanelButtonTemplate")
     actionBtn:SetWidth(64)
     actionBtn:SetHeight(18)
-    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 340, -4)
+    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 386, -4)
     local actionBtnText = getglobal(actionBtn:GetName() .. "Text")
     actionBtnText:SetFontObject("GameFontNormalSmall")
     actionBtnText:SetFont("Fonts\\FRIZQT__.ttf", 10)
@@ -1792,9 +1811,9 @@ local function CreateMainFrame()
     searchBox:SetScript("OnTextChanged", function() GuildBankViewer_RefreshList() end)
     searchBox:SetScript("OnEscapePressed", function() this:ClearFocus() end)
 
-    MakeSortHeader("bank", bankPage, "name", "Item", 50, -125, 178, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
-    MakeSortHeader("bank", bankPage, "count", "Count", 234, -125, 40)
-    MakeSortHeader("bank", bankPage, "alt", "Bank Alt", 280, -125, 90)
+    MakeSortHeader("bank", bankPage, "name", "Item", 50, -125, 216, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
+    MakeSortHeader("bank", bankPage, "count", "Count", 272, -125, 40)
+    MakeSortHeader("bank", bankPage, "alt", "Bank Alt", 318, -125, 90)
     GuildBankViewer_UpdateSortHeaders("bank")
 
     local listBg = CreateFrame("Frame", nil, bankPage)
@@ -1938,10 +1957,10 @@ local function CreateMainFrame()
         GuildBankViewer_OpenNewSelling()
     end)
 
-    MakeSortHeader("sell", sellPage, "name", "Item", 50, -125, 110, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
-    MakeSortHeader("sell", sellPage, "qty", "Qty", 166, -125, 34)
-    MakeSortHeader("sell", sellPage, "amount", "Price", 202, -125, 70)
-    MakeSortHeader("sell", sellPage, "poster", "Seller", 278, -125, 90)
+    MakeSortHeader("sell", sellPage, "name", "Item", 50, -125, 148, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
+    MakeSortHeader("sell", sellPage, "qty", "Qty", 204, -125, 34)
+    MakeSortHeader("sell", sellPage, "amount", "Price", 240, -125, 70)
+    MakeSortHeader("sell", sellPage, "poster", "Seller", 316, -125, 90)
     GuildBankViewer_UpdateSortHeaders("sell")
 
     local sellListBg = CreateFrame("Frame", nil, sellPage)
@@ -2002,10 +2021,10 @@ local function CreateMainFrame()
         GuildBankViewer_OpenNewBounty()
     end)
 
-    MakeSortHeader("bounty", bountyPage, "name", "Item", 50, -125, 110, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
-    MakeSortHeader("bounty", bountyPage, "qty", "Qty", 166, -125, 34)
-    MakeSortHeader("bounty", bountyPage, "amount", "Reward", 202, -125, 70)
-    MakeSortHeader("bounty", bountyPage, "poster", "Poster", 278, -125, 90)
+    MakeSortHeader("bounty", bountyPage, "name", "Item", 50, -125, 148, "Click to sort alphabetically.\nRight-click to sort by rarity.", true)
+    MakeSortHeader("bounty", bountyPage, "qty", "Qty", 204, -125, 34)
+    MakeSortHeader("bounty", bountyPage, "amount", "Reward", 240, -125, 70)
+    MakeSortHeader("bounty", bountyPage, "poster", "Poster", 316, -125, 90)
     GuildBankViewer_UpdateSortHeaders("bounty")
 
     local bountyListBg = CreateFrame("Frame", nil, bountyPage)
