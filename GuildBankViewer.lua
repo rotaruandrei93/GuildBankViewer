@@ -2528,12 +2528,14 @@ local function CreateNewMarketEntryFrame(kind, titleText, actionText)
     slot:RegisterForClicks("LeftButtonUp")
     slot:RegisterForDrag("LeftButton")
 
-    -- Sublevel 1 here (not the default 0) so this always draws on top of
-    -- the slot's own SetNormalTexture backpack-slot art, which sits on the
-    -- same "ARTWORK" layer at sublevel 0. Without this the normal texture
-    -- won and the selected item's icon was invisible even though selection
-    -- itself (tooltip, name label) worked fine.
-    local icon = slot:CreateTexture(nil, "ARTWORK", nil, 1)
+    -- Previously used ARTWORK layer + sublevel 1 to draw above the slot's
+    -- own SetNormalTexture backpack-slot art (also ARTWORK, sublevel 0).
+    -- That still wasn't reliably winning on this client, so use the
+    -- "OVERLAY" layer instead -- layers have a fixed, unconditional
+    -- stacking order (BACKGROUND < BORDER < ARTWORK < OVERLAY <
+    -- HIGHLIGHT) that doesn't depend on sublevel or creation-order
+    -- quirks the way same-layer sublevels apparently do here.
+    local icon = slot:CreateTexture(nil, "OVERLAY")
     icon:SetAllPoints(slot)
     icon:Hide()
     slot.icon = icon
