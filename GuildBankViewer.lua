@@ -1344,10 +1344,10 @@ end
 local function CreateRow(parent, index)
     local row = CreateFrame("Button", "GuildBankViewerRow" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(454) -- narrowed from 468 (was over-narrowed to 396 in a
-                       -- prior fix -- that left a large dead gap before the
-                       -- scrollbar) so the row's own background and the
-                       -- Request button end just clear of the scrollbar
+    row:SetWidth(460) -- narrowed from 468 (previously over-narrowed to 396,
+                       -- then under-tightened to 454) so the row's own
+                       -- background and the Request button end just clear
+                       -- of the scrollbar with a small, deliberate margin
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1392,7 +1392,7 @@ local function CreateRow(parent, index)
     local reqBtn = CreateFrame("Button", "GuildBankViewerRow" .. index .. "Req", row, "UIPanelButtonTemplate")
     reqBtn:SetWidth(60)
     reqBtn:SetHeight(18)
-    reqBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 390, -4)
+    reqBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 396, -4)
     reqBtn:SetText("Request")
     local reqBtnText = getglobal(reqBtn:GetName() .. "Text")
     reqBtnText:SetFontObject("GameFontNormalSmall")
@@ -1655,10 +1655,10 @@ end
 local function CreateMarketRow(parent, index, rowPool, namePrefix)
     local row = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index, parent)
     row:SetHeight(ITEM_ROW_HEIGHT)
-    row:SetWidth(455) -- narrowed from 484 (was over-narrowed to 396 in a
-                       -- prior fix -- that left a large dead gap before the
-                       -- scrollbar) so the row's own background and the
-                       -- action button end just clear of the scrollbar
+    row:SetWidth(461) -- narrowed from 484 (previously over-narrowed to 396,
+                       -- then under-tightened to 455) so the row's own
+                       -- background and the action button end just clear
+                       -- of the scrollbar with a small, deliberate margin
     if index == 1 then
         row:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     else
@@ -1703,7 +1703,7 @@ local function CreateMarketRow(parent, index, rowPool, namePrefix)
     local actionBtn = CreateFrame("Button", "GuildBankViewer" .. namePrefix .. "Row" .. index .. "Act", row, "UIPanelButtonTemplate")
     actionBtn:SetWidth(64)
     actionBtn:SetHeight(18)
-    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 386, -4)
+    actionBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 392, -4)
     local actionBtnText = getglobal(actionBtn:GetName() .. "Text")
     actionBtnText:SetFontObject("GameFontNormalSmall")
     actionBtnText:SetFont("Fonts\\FRIZQT__.ttf", 10)
